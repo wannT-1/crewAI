@@ -103,13 +103,16 @@ class PlusAPI(_CorePlusAPI):
             timeout=self.EVALUATION_POLL_TIMEOUT,
         )
 
-    def export_evaluation(self, evaluation_id: str) -> httpx.Response:
+    def export_evaluation(
+        self, evaluation_id: str, *, timeout: httpx.Timeout | None = None
+    ) -> httpx.Response:
         """The evaluation's full data as files (crewai eval export):
-        `{"id", "kind", "files": {relative path: text}}`."""
+        `{"id", "kind", "files": {relative path: text}}`. TIMEOUT replaces the
+        default, which allows the two minutes a large comparison may take."""
         return self._make_request(
             "GET",
             f"{self.EVALUATIONS_RESOURCE}/{evaluation_id}/export",
-            timeout=self.EVALUATION_EXPORT_TIMEOUT,
+            timeout=timeout or self.EVALUATION_EXPORT_TIMEOUT,
         )
 
     def _make_multipart_request(
@@ -132,10 +135,16 @@ class PlusAPI(_CorePlusAPI):
             request_kwargs["data"] = data
         if timeout is not None:
             request_kwargs["timeout"] = timeout
+        # An older crewai-core has no _http_client; its clients ignore proxies.
+        http_client = getattr(self, "_http_client", None)
 
         with (
             path.open("rb") as file_handle,
-            httpx.Client(trust_env=False, verify=verify) as client,
+            (
+                http_client(verify)
+                if http_client
+                else httpx.Client(verify=verify, trust_env=False)
+            ) as client,
         ):
             files = {
                 "zip_file": (path.name, file_handle, "application/zip"),

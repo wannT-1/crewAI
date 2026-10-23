@@ -1854,6 +1854,11 @@ class AgentExecutor(Flow[AgentExecutorState], BaseAgentExecutor):
                 function_calling_llm=self.function_calling_llm,
                 crew=self.crew,
             )
+        except HookAborted:
+            # A deliberate stop: the generic handler below would feed the
+            # policy abort back to the LLM as a recoverable observation.
+            raise
+
         except ToolExecutionFailedError:
             # A deliberate stop: the generic handler below would feed it back
             # to the LLM as a recoverable observation.
@@ -2844,8 +2849,10 @@ class AgentExecutor(Flow[AgentExecutorState], BaseAgentExecutor):
             if self.task:
                 original_description = self.task.description
                 self.task.description = enhanced_description
-                output = planning_handler.handle_agent_reasoning()
-                self.task.description = original_description
+                try:
+                    output = planning_handler.handle_agent_reasoning()
+                finally:
+                    self.task.description = original_description
             else:
                 # description is a read-only property — recreate with enhanced text
                 input_text = getattr(self, "_kickoff_input", "")
